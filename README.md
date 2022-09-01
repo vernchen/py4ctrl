@@ -1,5 +1,10 @@
 # py4ctrl -- python for control of power electronics.
 
+Currently Basic buck, boost, and buck–boost converters with current programmed control are summarized, as well as Control-to-output and line-to-output transfer functions for more accurate model.
+
+Resonant Converters design analysis, take LLC as example, simulated voltage gain function, Load-Dependent Properties of Resonant Converters and tank transfer function. 
+
+Also included theory of automatic control system coded in python, such as Fourier Series and Fourier Transform, basic types of compensators / filters, relationship between s-domain and z-domain.
 
 Recommend to run this project under mamba enviroment, with spyder installed:
 
