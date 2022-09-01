@@ -5,19 +5,19 @@ Created on Mon Aug 22 15:12:29 2022
 Resonant Converters
 
 The tank networks can be written in the form:
-                ——————
-    ———————————| jXs |—————————————————————
-               ——————      |              |
-                           |              |
-                         ——————         —————
-                        | jXp |        | Re |
-                        ——————         —————
+                —————
+    ———————————| Xs |—————————————————————
+               —————       |             |
                            |             |
-                           |             |
-    ——————————————————————————————————————
+                         —————         —————
+                        | Xp |        | Re |
+                        —————         —————
+                           |            |
+                           |            |
+    —————————————————————————————————————
 
-Zi0 = jXs for Re = 0;
-Zi∞ = j(Xs + Xp) for Re = ∞;
+Zi0 = Xs for Re = 0;
+Zi∞ = (Xs + Xp) for Re = ∞;
 
 The unloaded tank transfer function is:
                 Xp
@@ -25,8 +25,8 @@ The unloaded tank transfer function is:
              Xs + Xp
 
 The matched-load impedance is:
-               jXsXp
-    Zo0(ω) = ————————— = jXs * H∞(ω)
+               XsXp
+    Zo0(ω) = ————————— = Xs * H∞(ω)
               Xs + Xp
 
 Matched-load resistance occurs at Re = Ro0 = ||Zo0||.
@@ -82,14 +82,9 @@ import control.matlab as ctrl
 import matplotlib.pyplot as plt
 import ResurrectionF as resf
 
-def Tank_Network(Xs, Xp, Re, f0):
-    
-    # Rcrit = abs(Xp) * math.sqrt(-Xs / (Xs + Xp))
-    # print(Rcrit)
-    
+def Tank_Network_TF(Xs, Xp, Re, f0):
     # Transfer function.
     Gtank = resf.Parallel_Impedance(Xp, Re) / (resf.Parallel_Impedance(Xp, Re) + Xs)
-    
     print(Gtank)
     
     # Get the Gain and Phase and angular frequency 10Hz ~ 10MHz.
@@ -111,13 +106,78 @@ def Tank_Network(Xs, Xp, Re, f0):
     ax[1].semilogx(omega/(2*np.pi*f0), phase*180/np.pi)
     
     fig.tight_layout()
+
+def LLC_Tank_Critical_load(Cr, Lr, Lm, f0, fp):
+    
+    fs = np.linspace(fp+1, f0-1, 1000)
+    W = 2*np.pi*fs
+    
+    '''
+    Input impedance with load Re is:
+        Zi = (jωLm)||Re + jωLr + 1/jωCr
+        
+    R critical occurs when imaginary part of Zi, Im(Zi) = 0
+    Solve equation Im(Zi) = 0, and get Rcrit from fp->f0.
+    '''
+    Rcrit = np.sqrt((W**2)*(Lm**2)*(1/(W*Cr) - W*Lr) / (W*Lm + W*Lr - 1/(W*Cr)))
+    
+    fig, ax = plt.subplots(1, 1, figsize = (11, 8))
+    
+    ax.grid(which="both", ls=':')
+    ax.set_xlabel('f$_s$, Switching Frequency')
+    ax.set_ylabel('||R$_{crit}$|| , Critical load')
+    
+    ax.semilogx(fs, 20*np.log10(Rcrit), label = 'R$_{crit}$')
+    ax.legend(loc=3, fontsize=16, shadow=True)
+    
+def LLC_Tank_Input_Impedance(Cr, Lr, Lm):
+    # Switching frequency range from 1e2 to 1e7.
+    fs = np.linspace(1e2, 1e7, 10000)
+    
+    # Convert to angular frequency.
+    W = 2*np.pi*fs
+    
+    Xs = 1j*W*Lr + 1 / (1j*W*Cr)
+    Xp = 1j*W*Lm
+    
+    # Zis represent input impedance with output short circuit.
+    Zis = abs(Xs)
+    # Zio represent input impedance with output open circuit.
+    Zio = abs(Xs + Xp)
+    
+    '''
+    # fm defined at frequency where Zis = Zio:
+        abs(jwLr + 1 / jwCr) = abs(jw(Lr + Lm) + 1 / jwCr)
+        abs(jwLr - j / wCr) = abs(jw(Lr + Lm) - j / wCr)
+        abs(wLr - 1 / wCr) = abs(w(Lr + Lm) - 1 / wCr)
+        1 / wCr - wLr = w(Lr + Lm) - 1 / wCr
+        2 / wCr = w(2Lr + Lm)
+    '''
+    fm = math.sqrt(2 / (Cr*(2*Lr + Lm))) / (2*math.pi)
+    print('fm = ', fm)
+    
+    # Drawing Tank input impedance.
+    fig, ax = plt.subplots(1, 1, figsize = (11, 8))
+
+    ax.grid(which="both", ls=':')
+    ax.set_xlabel('f$_s$, Switching Frequency')
+    ax.set_ylabel('||Z$_i$|| , Input Impedance')
+    
+    ax.semilogx(fs, 20*np.log10(Zis), label = 'Z$_{is}$')
+    ax.semilogx(fs, 20*np.log10(Zio), label = 'Z$_{io}$')
+    ax.legend(loc=3, fontsize=16, shadow=True)
     
     
 def LLC_Tank_Network(Vi, Vo, Po, Cr, Lr, Lm, n):
+    
+    LLC_Tank_Input_Impedance(Cr, Lr, Lm)
+    
     # f0 is peak resonant frequency at load short circuit.
     # fp is peak resonant frequency at load open circuit (no load).
     f0 = 1 / (2*math.pi*math.sqrt(Lr*Cr))
     fp = 1 / (2*math.pi*math.sqrt((Lr+Lm)*Cr))
+    
+    LLC_Tank_Critical_load(Cr, Lr, Lm, f0, fp)
     
     # Inductance ratio, Normalized inductance.
     Ln = Lm / Lr
@@ -136,7 +196,7 @@ def LLC_Tank_Network(Vi, Vo, Po, Cr, Lr, Lm, n):
     Xp = s*Lm
     
     # Draw tank transfer fucntion and bode plot.
-    Tank_Network(Xs, Xp, Re, f0)
+    Tank_Network_TF(Xs, Xp, Re, f0)
     
     '''
     The quality factor of the series resonant circuit is defined as:
@@ -181,21 +241,18 @@ def LLC_Tank_Network(Vi, Vo, Po, Cr, Lr, Lm, n):
     # ax.set_xlim(0.8, 1.2)
     ax.set_ylim(0.9, 1.1)
     
-    Qe = [0.1, 0.2, 0.5, 0.8, 1, 2, 5, 8, 10]
+    Qe = [0, 0.1, 0.2, 0.38, 0.5, 0.8, 1, 2, 5, 8, 10]
     
     for i, value in enumerate(Qe):
         Mg = abs(Ln * fn**2 / ((Ln + 1) * fn**2 - 1 + ((fn**2 - 1) * fn * value * Ln)*1j))
         ax.semilogx(fn, Mg, label = 'Qe = ' + str(value))
         ax.legend(loc=1, fontsize=16, shadow=True)
-
-    
-# Example.
-# LLC_Tank_Network(27.3e-9, 60e-6, 210e-6, 90)
-
-# LLC Tank parameters:
+        
+        
+# Example, LLC Tank parameters:
 Vi = 426            # Bulk voltage = 426V
 Vo = 12.5           # Output voltage = 12.5V
-Po = 4200           # Full load power = 4200W
+Po = 4200/2         # Full load power = 4200W, divided by 2 as interleaved.
 Cr = 220e-9         # 220nF
 Lr = 9.7e-6         # 9.7uH
 Lm = 145e-6         # 145uH
