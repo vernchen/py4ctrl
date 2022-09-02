@@ -83,12 +83,16 @@ import matplotlib.pyplot as plt
 import ResurrectionF as resf
 
 def Tank_Network_TF(Xs, Xp, Re, f0):
-    # Transfer function.
-    Gtank = resf.Parallel_Impedance(Xp, Re) / (resf.Parallel_Impedance(Xp, Re) + Xs)
-    print(Gtank)
     
-    # Get the Gain and Phase and angular frequency 10Hz ~ 10MHz.
-    gain, phase, omega = ctrl.bode(Gtank, ctrl.logspace(4, 7), plot = False)
+    # Transfer function of major load condition, Re as full load.
+    Gt100 = resf.Parallel_Impedance(Xp, Re) / (resf.Parallel_Impedance(Xp, Re) + Xs)
+    R = Re * 2      # 50% load, half load.
+    Gt50 = resf.Parallel_Impedance(Xp, R) / (resf.Parallel_Impedance(Xp, R) + Xs)
+    R = Re * 5      # 20% load.
+    Gt20 = resf.Parallel_Impedance(Xp, R) / (resf.Parallel_Impedance(Xp, R) + Xs)
+    R = Re * 10     # 10% load.
+    Gt10 = resf.Parallel_Impedance(Xp, R) / (resf.Parallel_Impedance(Xp, R) + Xs)
+    print(Gt100)
     
     # Drawing based on normalized frequency.
     fig, ax = plt.subplots(2, 1, figsize = (11, 8))
@@ -100,18 +104,29 @@ def Tank_Network_TF(Xs, Xp, Re, f0):
     ax[1].set_ylabel('Phase [deg]')
     ax[0].set_xlim(0.1, 10)
     ax[1].set_xlim(0.1, 10)
-    ax[1].set_yticks([-450, -405, -360, -315, -270, -225])
+    ax[0].set_ylim(-20, 20)
+    ax[1].set_yticks([-90, -45, 0, 45, 90, 135])
     
-    ax[0].semilogx(omega/(2*np.pi*f0), 20*np.log10(gain))
-    ax[1].semilogx(omega/(2*np.pi*f0), phase*180/np.pi)
-    
+    Gtank = (Gt10, Gt20, Gt50, Gt100)
+    Gstring = ('10% load', '20% load', '50% load', '100% load')
+        
+    for i, value in enumerate(Gtank):
+        # Get the Gain and Phase and angular frequency 10Hz ~ 10MHz.
+        gain, phase, omega = ctrl.bode(value, ctrl.logspace(4, 7), plot = False)
+        
+        ax[0].semilogx(omega/(2*np.pi*f0), 20*np.log10(gain), label = Gstring[i])
+        ax[1].semilogx(omega/(2*np.pi*f0), phase*180/np.pi + 360, label = Gstring[i])
+        
+    ax[0].legend(loc=1, fontsize=16, shadow=True)
+    ax[1].legend(loc=1, fontsize=16, shadow=True)
     fig.tight_layout()
 
-def LLC_Tank_Critical_load(Cr, Lr, Lm, f0, fp):
+def LLC_Tank_Critical_load(Cr, Lr, Lm, f0, fp, Re):
     
     fs = np.linspace(fp+1, f0-1, 1000)
     W = 2*np.pi*fs
     
+    # Rf = np.linspace(Re, Re, 1000)
     '''
     Input impedance with load Re is:
         Zi = (jωLm)||Re + jωLr + 1/jωCr
@@ -124,10 +139,27 @@ def LLC_Tank_Critical_load(Cr, Lr, Lm, f0, fp):
     fig, ax = plt.subplots(1, 1, figsize = (11, 8))
     
     ax.grid(which="both", ls=':')
-    ax.set_xlabel('f$_s$, Switching Frequency')
-    ax.set_ylabel('||R$_{crit}$|| , Critical load')
+    ax.set_xlabel('f$_s$, Switching Frequency [Hz]')
+    ax.set_ylabel('||R|| , Load impedance [dB]')
     
     ax.semilogx(fs, 20*np.log10(Rcrit), label = 'R$_{crit}$')
+    # ax.semilogx(fs, 20*np.log10(Rf), label = 'R$_{full}$', linestyle = '-.')
+    
+    # Get the frequency at full load ZVS/ZCS boundary.
+    y = 20*np.log10(Re)
+    for i, value in enumerate(Rcrit):
+        if value < Re:
+            x = fs[i]
+            break
+    
+    ax.axhline(y, color='darkorange', lw=1, ls = '--')
+    ax.axvline(x, color='darkorange', lw=1, ls = '--')
+    ax.scatter(x, y, color='k', lw=2)
+    text = '  fs   = ' + str(round(x/1000, 2)) + \
+        ' kHz\n ||R|| = ' + str(round(y, 2)) + ' dB\n'
+    ax.annotate(text, xy=(x, y), xytext=(x-2e4, y-1e1), arrowprops = dict(facecolor ='g'))
+    ax.text(6e4, 5e1, 'ZVS', color='g', size=39)
+    ax.text(4e4, 0e1, 'ZCS', color='salmon', size=39)
     ax.legend(loc=3, fontsize=16, shadow=True)
     
 def LLC_Tank_Input_Impedance(Cr, Lr, Lm):
@@ -154,17 +186,29 @@ def LLC_Tank_Input_Impedance(Cr, Lr, Lm):
         2 / wCr = w(2Lr + Lm)
     '''
     fm = math.sqrt(2 / (Cr*(2*Lr + Lm))) / (2*math.pi)
-    print('fm = ', fm)
+    Zm = abs(1j*2*math.pi*fm*Lr + 1 / (1j*2*math.pi*fm*Cr))
+    print('fm = ', fm, '\nZm = ', Zm)
     
     # Drawing Tank input impedance.
     fig, ax = plt.subplots(1, 1, figsize = (11, 8))
 
     ax.grid(which="both", ls=':')
-    ax.set_xlabel('f$_s$, Switching Frequency')
-    ax.set_ylabel('||Z$_i$|| , Input Impedance')
+    ax.set_xlabel('f$_s$, Switching Frequency [Hz]')
+    ax.set_ylabel('||Z$_i$|| , Input Impedance [dB]')
     
     ax.semilogx(fs, 20*np.log10(Zis), label = 'Z$_{is}$')
     ax.semilogx(fs, 20*np.log10(Zio), label = 'Z$_{io}$')
+    
+    x = fm
+    y = 20*np.log10(Zm)
+    
+    ax.scatter(x, y, color='k', lw=2)
+    text = '  fs   = ' + str(round(x/1000, 2)) + \
+        ' kHz\n ||Zi|| = ' + str(round(y, 2)) + ' dB\n'
+    ax.annotate(text, xy=(x, y), xytext=(x+5e4, y+3e1), arrowprops = \
+                dict(arrowstyle = "->", connectionstyle = \
+                     "angle, angleA = 0, angleB = 90, rad = 10"))
+    
     ax.legend(loc=3, fontsize=16, shadow=True)
     
     
@@ -177,8 +221,6 @@ def LLC_Tank_Network(Vi, Vo, Po, Cr, Lr, Lm, n):
     f0 = 1 / (2*math.pi*math.sqrt(Lr*Cr))
     fp = 1 / (2*math.pi*math.sqrt((Lr+Lm)*Cr))
     
-    LLC_Tank_Critical_load(Cr, Lr, Lm, f0, fp)
-    
     # Inductance ratio, Normalized inductance.
     Ln = Lm / Lr
     
@@ -189,6 +231,8 @@ def LLC_Tank_Network(Vi, Vo, Po, Cr, Lr, Lm, n):
               Ioe      pi^2       Io      pi^2 
     '''
     Re = (8 * n**2/math.pi**2) * Vo**2 / Po
+    
+    LLC_Tank_Critical_load(Cr, Lr, Lm, f0, fp, Re)
     
     # Standarized tank resonant convertor.
     s = ctrl.tf('s')
